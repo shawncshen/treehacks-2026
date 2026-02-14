@@ -12,7 +12,7 @@ class ActionEngine:
     """Shows DOM elements instantly, then upgrades to GPT suggestions in background."""
 
     def __init__(self, overlay=None):
-        self.browser = BrowserController()
+        self.browser = BrowserController(on_cursor_move=self._on_cursor_position)
         self.analyzer = PageAnalyzer(api_key=OPENAI_API_KEY)
         self.overlay = overlay if overlay is not None else Overlay()
         self._suggestions: list[Suggestion] = []
@@ -20,6 +20,10 @@ class ActionEngine:
         self._selected: int = 0
         self._running: bool = False
         self._gpt_task: asyncio.Task | None = None
+
+    def _on_cursor_position(self, x, y, action):
+        if hasattr(self.overlay, 'update_cursor_info'):
+            self.overlay.update_cursor_info(x, y, action)
 
     async def start(self, url: str):
         self.overlay.set_status(False)
@@ -87,9 +91,17 @@ class ActionEngine:
         # RED — extracting elements
         self.overlay.set_status(False)
 
+        # Make sure cursor is still in the DOM after page updates
+        await self.browser.ensure_cursor()
+
         # Step 1: Instant — extract elements and show immediately
+        # Retry once if execution context was destroyed (post-navigation race)
         current_url = await self.browser.get_url()
-        self._elements = await self.browser.get_interactive_elements()
+        try:
+            self._elements = await self.browser.get_interactive_elements()
+        except Exception:
+            await asyncio.sleep(0.5)
+            self._elements = await self.browser.get_interactive_elements()
         self._suggestions = self._elements_to_suggestions(self._elements)
         self._selected = 0
 
@@ -154,7 +166,11 @@ class ActionEngine:
                     await self.browser.page_type(text)
 
             elif suggestion.action_type == "navigate":
-                await self.browser.goto(detail.get("url", ""))
+                el = self._find_element(detail.get("element_id", -1))
+                if el:
+                    await self.browser.click_coords(el["cx"], el["cy"])
+                else:
+                    await self.browser.goto(detail.get("url", ""))
 
             elif suggestion.action_type == "scroll":
                 await self.browser.scroll(detail.get("direction", "down"))

@@ -3,15 +3,18 @@
 import asyncio
 from pyppeteer import launch
 
-from actions.config import BROWSER_HEADLESS, VIEWPORT_WIDTH, VIEWPORT_HEIGHT
+from actions.config import BROWSER_HEADLESS, VIEWPORT_WIDTH, VIEWPORT_HEIGHT, CURSOR_ENABLED
+from actions.cursor import PageCursor
 
 
 class BrowserController:
     """Controls a Chromium browser via Pyppeteer."""
 
-    def __init__(self):
+    def __init__(self, on_cursor_move=None):
         self._browser = None
         self._page = None
+        self._on_cursor_move = on_cursor_move
+        self._cursor: PageCursor | None = None
 
     async def launch(self):
         """Launch Chromium browser."""
@@ -26,12 +29,21 @@ class BrowserController:
         # Clear fixed viewport so page follows window size
         await self._page._client.send("Emulation.clearDeviceMetricsOverride")
 
+        if CURSOR_ENABLED:
+            self._cursor = PageCursor(on_position_change=self._on_cursor_move)
+            await self._cursor.attach(self._page)
+
     async def get_viewport_size(self) -> tuple[int, int]:
         """Get the current actual viewport size from the browser."""
         size = await self._page.evaluate(
             "() => ({w: window.innerWidth, h: window.innerHeight})"
         )
         return int(size["w"]), int(size["h"])
+
+    async def ensure_cursor(self):
+        """Re-inject cursor if it was removed by dynamic page updates."""
+        if self._cursor:
+            await self._cursor.ensure_alive()
 
     async def screenshot(self) -> bytes:
         """Take a screenshot at current window size."""
@@ -148,19 +160,30 @@ class BrowserController:
 
     async def click_coords(self, x: int, y: int):
         """Click at specific pixel coordinates."""
+        if self._cursor:
+            await self._cursor.move_to(x, y)
+            await self._cursor.click_effect()
         await self._page.mouse.click(x, y)
 
     async def scroll(self, direction: str):
         """Scroll the page up or down with smooth animation."""
+        if self._cursor:
+            w, h = await self.get_viewport_size()
+            await self._cursor.move_to(w // 2, h // 2, duration_ms=200)
         delta = -800 if direction == "up" else 800
         await self._page.evaluate(f"window.scrollBy({{top: {delta}, behavior: 'smooth'}})")
 
     async def goto(self, url: str):
-        """Navigate to a URL — returns as soon as page starts rendering."""
+        """Navigate to a URL and wait for page to be interactive."""
         try:
-            await self._page.goto(url, {"waitUntil": "domcontentloaded", "timeout": 8000})
+            await self._page.goto(url, {"waitUntil": "networkidle2", "timeout": 12000})
         except Exception:
             pass
+        # Extra buffer for late-loading JS content
+        await asyncio.sleep(0.5)
+        if self._cursor:
+            await self._cursor._inject_cursor()
+            await self._cursor._center()
 
     async def type_text(self, selector: str, text: str):
         """Type text into an input element."""

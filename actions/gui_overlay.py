@@ -71,6 +71,11 @@ class GuiOverlay:
         ttk.Button(row, text="Execute", command=self._on_execute).pack(side=tk.LEFT, padx=(0, 8))
         ttk.Button(row, text="Quit", command=self._on_quit).pack(side=tk.LEFT)
 
+        cursor_frame = ttk.Frame(main)
+        cursor_frame.pack(fill=tk.X, pady=(8, 0))
+        self._cursor_label = ttk.Label(cursor_frame, text="Cursor: idle", font=("Menlo", 9), foreground="gray")
+        self._cursor_label.pack(side=tk.LEFT)
+
         self._root.protocol("WM_DELETE_WINDOW", self._on_quit)
 
         # Up/Down/Enter work from anywhere in the window
@@ -139,6 +144,10 @@ class GuiOverlay:
     def show(self, suggestions: list["Suggestion"], selected_index: int, smart: bool = False):
         """Update the GUI with current suggestions and selection (thread-safe)."""
         self._root.after(0, self._update_ui, suggestions, selected_index, smart)
+
+    def update_cursor_info(self, x, y, action):
+        """Update the cursor position display (thread-safe)."""
+        self._root.after(0, self._cursor_label.config, {"text": f"Cursor: ({x}, {y}) \u2014 {action}"})
 
     def clear(self):
         """Clear the list (thread-safe)."""

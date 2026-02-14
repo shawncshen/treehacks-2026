@@ -210,6 +210,22 @@ def run_gui(url: str):
 
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
+
+    # Suppress noisy pyppeteer "detachFromTarget" warnings during navigation
+    _orig_handler = loop.get_exception_handler()
+    def _quiet_handler(loop, context):
+        msg = str(context.get("message", ""))
+        exc = context.get("exception")
+        if exc and "detachFromTarget" in str(exc):
+            return
+        if "detachFromTarget" in msg:
+            return
+        if _orig_handler:
+            _orig_handler(loop, context)
+        else:
+            loop.default_exception_handler(context)
+    loop.set_exception_handler(_quiet_handler)
+
     task = loop.create_task(run_gui_loop(url, command_queue, overlay))
 
     def pump():
