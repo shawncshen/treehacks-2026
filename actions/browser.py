@@ -1,16 +1,17 @@
-"""Pyppeteer browser controller for taking screenshots and executing actions."""
+"""Playwright browser controller for automation and actions."""
 
 import asyncio
-from pyppeteer import launch
+from playwright.async_api import async_playwright
 
 from actions.config import BROWSER_HEADLESS, VIEWPORT_WIDTH, VIEWPORT_HEIGHT, CURSOR_ENABLED
 from actions.cursor import PageCursor
 
 
 class BrowserController:
-    """Controls a Chromium browser via Pyppeteer."""
+    """Controls a Chromium browser via Playwright."""
 
     def __init__(self, on_cursor_move=None):
+        self._playwright = None
         self._browser = None
         self._page = None
         self._on_cursor_move = on_cursor_move
@@ -18,16 +19,19 @@ class BrowserController:
 
     async def launch(self):
         """Launch Chromium browser."""
-        self._browser = await launch(
+        self._playwright = await async_playwright().start()
+        self._browser = await self._playwright.chromium.launch(
             headless=BROWSER_HEADLESS,
             args=[
                 f"--window-size={VIEWPORT_WIDTH},{VIEWPORT_HEIGHT}",
                 "--no-sandbox",
             ],
         )
-        self._page = (await self._browser.pages())[0]
-        # Clear fixed viewport so page follows window size
-        await self._page._client.send("Emulation.clearDeviceMetricsOverride")
+        context = await self._browser.new_context(
+            viewport={"width": VIEWPORT_WIDTH, "height": VIEWPORT_HEIGHT},
+            no_viewport=False,
+        )
+        self._page = await context.new_page()
 
         if CURSOR_ENABLED:
             self._cursor = PageCursor(on_position_change=self._on_cursor_move)
@@ -47,15 +51,10 @@ class BrowserController:
 
     async def screenshot(self) -> bytes:
         """Take a screenshot at current window size."""
-        return await self._page.screenshot({"type": "png"})
+        return await self._page.screenshot(type="png")
 
     async def get_interactive_elements(self) -> list[dict]:
-        """Extract all visible interactive elements with bounding boxes.
-
-        Covers: links, buttons, inputs, textareas, selects, role-based elements,
-        elements with click handlers, elements with cursor:pointer, and
-        any visible text element that looks clickable.
-        """
+        """Extract all visible interactive elements with bounding boxes."""
         elements = await self._page.evaluate("""() => {
             const results = [];
             const seen = new Set();
@@ -64,7 +63,6 @@ class BrowserController:
             const vh = window.innerHeight;
 
             function getText(el) {
-                // Try multiple sources for element text
                 return (
                     el.getAttribute('aria-label') ||
                     el.innerText ||
@@ -93,12 +91,10 @@ class BrowserController:
                 const cx = Math.round(rect.left + rect.width / 2);
                 const cy = Math.round(rect.top + rect.height / 2);
 
-                // Deduplicate by center position (within 5px)
                 const key = `${Math.round(cx/5)*5},${Math.round(cy/5)*5}`;
                 if (seen.has(key)) return;
 
                 const text = getText(el);
-                // Allow inputs/textareas even without text
                 const isInput = el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT';
                 if (!text && !isInput) return;
 
@@ -116,7 +112,6 @@ class BrowserController:
                 });
             }
 
-            // 1. Standard interactive elements
             const standardSelectors = [
                 'a[href]',
                 'button',
@@ -140,7 +135,6 @@ class BrowserController:
             ].join(', ');
             document.querySelectorAll(standardSelectors).forEach(addElement);
 
-            // 2. Elements with cursor:pointer that weren't caught above
             const allVisible = document.querySelectorAll('div, span, li, img, svg, p, h1, h2, h3, td, th');
             for (const el of allVisible) {
                 if (id >= 60) break;
@@ -176,10 +170,9 @@ class BrowserController:
     async def goto(self, url: str):
         """Navigate to a URL and wait for page to be interactive."""
         try:
-            await self._page.goto(url, {"waitUntil": "networkidle2", "timeout": 12000})
+            await self._page.goto(url, wait_until="networkidle", timeout=12000)
         except Exception:
             pass
-        # Extra buffer for late-loading JS content
         await asyncio.sleep(0.5)
         if self._cursor:
             await self._cursor._inject_cursor()
@@ -199,15 +192,26 @@ class BrowserController:
 
     async def go_back(self):
         """Go back in browser history."""
-        await self._page.goBack({"waitUntil": "domcontentloaded", "timeout": 8000})
+        await self._page.go_back(wait_until="domcontentloaded", timeout=8000)
 
     async def go_forward(self):
         """Go forward in browser history."""
-        await self._page.goForward({"waitUntil": "domcontentloaded", "timeout": 8000})
+        await self._page.go_forward(wait_until="domcontentloaded", timeout=8000)
 
     async def get_url(self) -> str:
         """Get the current page URL."""
         return self._page.url
+
+    async def get_page_title(self) -> str:
+        """Get the current page title."""
+        return await self._page.evaluate("() => document.title") or ""
+
+    async def get_page_text(self) -> str:
+        """Get visible text content from the page (truncated)."""
+        text = await self._page.evaluate(
+            "() => document.body.innerText.substring(0, 3000)"
+        )
+        return text or ""
 
     async def close(self):
         """Close the browser."""
@@ -215,3 +219,6 @@ class BrowserController:
             await self._browser.close()
             self._browser = None
             self._page = None
+        if self._playwright:
+            await self._playwright.stop()
+            self._playwright = None

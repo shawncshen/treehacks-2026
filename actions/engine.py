@@ -1,146 +1,96 @@
-"""Main action engine — instant DOM elements + background GPT suggestions."""
+"""Autonomous browser agent — takes a goal and executes it step by step."""
 
 import asyncio
 
 from actions.browser import BrowserController
-from actions.vision import PageAnalyzer, Suggestion
-from actions.overlay import Overlay
-from actions.config import OPENAI_API_KEY
+from actions.vision import AgentPlanner, Suggestion
+from actions.config import OPENAI_API_KEY, MAX_AGENT_STEPS
 
 
-class ActionEngine:
-    """Shows DOM elements instantly, then upgrades to GPT suggestions in background."""
+class AutonomousAgent:
+    """Takes a natural language goal and autonomously controls the browser to achieve it."""
 
-    def __init__(self, overlay=None):
-        self.browser = BrowserController(on_cursor_move=self._on_cursor_position)
-        self.analyzer = PageAnalyzer(api_key=OPENAI_API_KEY)
-        self.overlay = overlay if overlay is not None else Overlay()
-        self._suggestions: list[Suggestion] = []
+    def __init__(self, max_steps: int = MAX_AGENT_STEPS):
+        self.browser = BrowserController()
+        self.planner = AgentPlanner(api_key=OPENAI_API_KEY)
+        self.max_steps = max_steps
         self._elements: list[dict] = []
-        self._selected: int = 0
-        self._running: bool = False
-        self._gpt_task: asyncio.Task | None = None
-
-    def _on_cursor_position(self, x, y, action):
-        if hasattr(self.overlay, 'update_cursor_info'):
-            self.overlay.update_cursor_info(x, y, action)
 
     async def start(self, url: str):
-        self.overlay.set_status(False)
+        """Launch browser and navigate to starting URL."""
         await self.browser.launch()
         await self.browser.goto(url)
-        self._running = True
 
-    def _elements_to_suggestions(self, elements: list[dict]) -> list[Suggestion]:
-        """Convert raw DOM elements into suggestions (instant, no API)."""
-        suggestions = []
-        for el in elements[:8]:
-            if el.get("href"):
-                action_type = "navigate"
-                detail = {"url": el["href"], "element_id": el["id"]}
-            elif el["tag"] in ("input", "textarea", "select") or el.get("type") in ("text", "search", "email", "password", "url"):
-                action_type = "type"
-                detail = {"element_id": el["id"], "text": ""}
-            else:
-                action_type = "click"
-                detail = {"element_id": el["id"]}
+    async def run(self, goal: str):
+        """Run the autonomous agent loop until goal is done or max steps reached."""
+        self.planner.reset()
+        print(f"\n  Goal: {goal}\n", flush=True)
 
-            suggestions.append(Suggestion(
-                id=len(suggestions),
-                label=el["text"][:50],
-                action_type=action_type,
-                action_detail=detail,
-                description=f"{action_type} <{el['tag']}>",
-            ))
+        for step in range(1, self.max_steps + 1):
+            # Ensure cursor is alive after page updates
+            await self.browser.ensure_cursor()
 
-        suggestions.append(Suggestion(
-            id=len(suggestions), label="Scroll Down", action_type="scroll",
-            action_detail={"direction": "down"}, description="Scroll down",
-        ))
-        suggestions.append(Suggestion(
-            id=len(suggestions), label="Scroll Up", action_type="scroll",
-            action_detail={"direction": "up"}, description="Scroll up",
-        ))
-        suggestions.append(Suggestion(
-            id=len(suggestions), label="Go Back", action_type="history",
-            action_detail={"direction": "back"}, description="Previous page",
-        ))
-        suggestions.append(Suggestion(
-            id=len(suggestions), label="Go Forward", action_type="history",
-            action_detail={"direction": "forward"}, description="Next page",
-        ))
-        return suggestions
+            # Get current page context
+            current_url = await self.browser.get_url()
+            page_title = await self.browser.get_page_title()
 
-    async def _fetch_gpt_suggestions(self, url: str, elements: list[dict]):
-        """Background task: get GPT suggestions and update display."""
-        try:
-            gpt_suggestions = await self.analyzer.analyze(url, elements)
-            if gpt_suggestions and self._running:
-                self._suggestions = gpt_suggestions
-                self._selected = min(self._selected, len(self._suggestions) - 1)
-                self.overlay.show(self._suggestions, self._selected, smart=True)
-        except Exception:
-            pass  # Keep showing DOM elements if GPT fails
+            try:
+                self._elements = await self.browser.get_interactive_elements()
+            except Exception:
+                await asyncio.sleep(0.5)
+                try:
+                    self._elements = await self.browser.get_interactive_elements()
+                except Exception:
+                    self._elements = []
 
-    async def run_cycle(self) -> list[Suggestion]:
-        """Show DOM elements instantly, then upgrade with GPT in background."""
-        if self._gpt_task and not self._gpt_task.done():
-            self._gpt_task.cancel()
+            print(f"  [{step}] {page_title} — {current_url}", flush=True)
+            print(f"       {len(self._elements)} elements found", flush=True)
 
-        # RED — extracting elements
-        self.overlay.set_status(False)
+            # Display top 10 available actions for visibility
+            self._print_suggestions(self._elements[:10])
 
-        # Make sure cursor is still in the DOM after page updates
-        await self.browser.ensure_cursor()
+            # Ask LLM for next action
+            action = await self.planner.decide_next_action(
+                goal=goal,
+                current_url=current_url,
+                page_title=page_title,
+                elements=self._elements,
+                step_number=step,
+            )
 
-        # Step 1: Instant — extract elements and show immediately
-        # Retry once if execution context was destroyed (post-navigation race)
-        current_url = await self.browser.get_url()
-        try:
-            self._elements = await self.browser.get_interactive_elements()
-        except Exception:
-            await asyncio.sleep(0.5)
-            self._elements = await self.browser.get_interactive_elements()
-        self._suggestions = self._elements_to_suggestions(self._elements)
-        self._selected = 0
+            if action is None:
+                print(f"       LLM failed to respond, retrying...", flush=True)
+                await asyncio.sleep(1)
+                continue
 
-        # GREEN — user can interact now
-        self.overlay.set_status(True)
-        self.overlay.show(self._suggestions, self._selected, smart=False)
+            # Check if done
+            if action.action_type == "done":
+                summary = action.action_detail.get("summary", "Goal completed")
+                print(f"       DONE: {summary}\n", flush=True)
+                return
 
-        # Step 2: Background — kick off GPT for smarter suggestions
-        self._gpt_task = asyncio.ensure_future(
-            self._fetch_gpt_suggestions(current_url, self._elements)
-        )
+            # Log and execute
+            print(f"       Action: {action.action_type} — {action.description}", flush=True)
+            await self._execute(action)
 
-        return self._suggestions
+            # Brief pause for page to update
+            await asyncio.sleep(1)
 
-    def move_selection(self, direction: str):
-        if not self._suggestions:
+        print(f"\n  Reached max steps ({self.max_steps}). Stopping.\n", flush=True)
+
+    def _print_suggestions(self, elements: list[dict]):
+        """Print the top interactive elements as numbered suggestions."""
+        if not elements:
+            print("       (no interactive elements)", flush=True)
             return
-        if direction == "up":
-            self._selected = max(0, self._selected - 1)
-        else:
-            self._selected = min(len(self._suggestions) - 1, self._selected + 1)
-        self.overlay.show(self._suggestions, self._selected)
-
-    def select_index(self, index: int):
-        if self._suggestions and 0 <= index < len(self._suggestions):
-            self._selected = index
-            self.overlay.show(self._suggestions, self._selected)
-
-    async def execute_selected(self):
-        if not self._suggestions:
-            return
-        # Cancel GPT if still running — we're moving on
-        if self._gpt_task and not self._gpt_task.done():
-            self._gpt_task.cancel()
-
-        # RED — executing action
-        self.overlay.set_status(False)
-
-        suggestion = self._suggestions[self._selected]
-        await self.execute(suggestion)
+        print("       ┌─ Available actions ─────────────────────", flush=True)
+        for i, el in enumerate(elements):
+            tag = el.get("tag", "?")
+            text = el.get("text", "")[:45]
+            href = el.get("href", "")
+            suffix = f" → {href[:40]}" if href else ""
+            print(f"       │ [{i}] <{tag}> {text}{suffix}", flush=True)
+        print("       └────────────────────────────────────────", flush=True)
 
     def _find_element(self, element_id: int) -> dict | None:
         for el in self._elements:
@@ -148,15 +98,16 @@ class ActionEngine:
                 return el
         return None
 
-    async def execute(self, suggestion: Suggestion):
-        detail = suggestion.action_detail
+    async def _execute(self, action: Suggestion):
+        """Execute a single action on the browser."""
+        detail = action.action_detail
         try:
-            if suggestion.action_type == "click":
+            if action.action_type == "click":
                 el = self._find_element(detail.get("element_id", -1))
                 if el:
                     await self.browser.click_coords(el["cx"], el["cy"])
 
-            elif suggestion.action_type == "type":
+            elif action.action_type == "type":
                 el = self._find_element(detail.get("element_id", -1))
                 if el:
                     await self.browser.click_coords(el["cx"], el["cy"])
@@ -164,31 +115,26 @@ class ActionEngine:
                 if text:
                     await self.browser.page_type(text)
 
-            elif suggestion.action_type == "navigate":
-                el = self._find_element(detail.get("element_id", -1))
-                if el:
-                    await self.browser.click_coords(el["cx"], el["cy"])
-                else:
-                    await self.browser.goto(detail.get("url", ""))
+            elif action.action_type == "navigate":
+                url = detail.get("url", "")
+                if url:
+                    await self.browser.goto(url)
 
-            elif suggestion.action_type == "scroll":
+            elif action.action_type == "scroll":
                 await self.browser.scroll(detail.get("direction", "down"))
 
-            elif suggestion.action_type == "press_key":
-                await self.browser.press_key(detail["key"])
+            elif action.action_type == "press_key":
+                await self.browser.press_key(detail.get("key", "Enter"))
 
-            elif suggestion.action_type == "history":
+            elif action.action_type == "history":
                 if detail.get("direction") == "back":
                     await self.browser.go_back()
                 else:
                     await self.browser.go_forward()
 
         except Exception as e:
-            print(f"\n  Action failed: {e}", flush=True)
+            print(f"       Action failed: {e}", flush=True)
 
     async def stop(self):
-        self._running = False
-        if self._gpt_task and not self._gpt_task.done():
-            self._gpt_task.cancel()
+        """Close the browser."""
         await self.browser.close()
-        self.overlay.clear()
