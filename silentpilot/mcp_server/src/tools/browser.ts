@@ -13,9 +13,11 @@
  */
 
 import { chromium, Browser, Page } from "playwright";
+import { PageCursor } from "./cursor.js";
 
 let browser: Browser | null = null;
 let page: Page | null = null;
+let cursor: PageCursor | null = null;
 
 const VIEWPORT = { width: 1280, height: 800 };
 
@@ -40,6 +42,11 @@ export async function ensureBrowser(): Promise<Page> {
       viewport: VIEWPORT,
     });
     page = await context.newPage();
+    cursor = new PageCursor(page);
+    await cursor.attach();
+  } else {
+    // Ensure cursor is still in DOM (handles navigations)
+    if (cursor) await cursor.ensureAlive();
   }
   return page;
 }
@@ -56,14 +63,25 @@ export async function closeBrowser(): Promise<void> {
 
 export async function browserGoto(url: string): Promise<string> {
   const p = await ensureBrowser();
+  if (cursor) await cursor.hide();
   await p.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
+  if (cursor) {
+    await cursor.attach();
+    await cursor.show();
+  }
   return `Navigated to ${p.url()}`;
 }
 
 export async function browserClick(selector: string): Promise<string> {
   const p = await ensureBrowser();
   try {
-    await p.click(selector, { timeout: 5000 });
+    const loc = p.locator(selector);
+    const box = await loc.boundingBox();
+    if (box && cursor) {
+      await cursor.moveTo(box.x + box.width / 2, box.y + box.height / 2);
+      await cursor.clickEffect();
+    }
+    await loc.click({ timeout: 5000 });
     return `Clicked: ${selector}`;
   } catch (e) {
     return `Failed to click '${selector}': ${e}`;
@@ -94,6 +112,9 @@ export async function browserScroll(
   amount: number = 300
 ): Promise<string> {
   const p = await ensureBrowser();
+  if (cursor) {
+    await cursor.moveTo(VIEWPORT.width / 2, VIEWPORT.height / 2);
+  }
   const delta = direction === "down" ? amount : -amount;
   await p.mouse.wheel(0, delta);
   return `Scrolled ${direction} by ${amount}px`;

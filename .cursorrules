@@ -1,0 +1,29 @@
+# SilentPilot - Cursor Rules
+
+You are an expert AI agent working on SilentPilot, a sEMG-powered silent speech interface.
+
+## Architecture Overview
+- `silentpilot/emg_core/`: Python DSP and ML pipeline. Handles raw EMG samples -> features -> classification.
+- `silentpilot/app_ui/`: Next.js frontend for visualization and calibration.
+- `silentpilot/agent/`: TypeScript orchestrator that bridges EMG commands to LLM responses.
+- `silentpilot/mcp_server/`: TypeScript MCP server with browser control tools (Playwright).
+- `actions/`: Legacy/Alternative Python browser control (Pyppeteer).
+
+## Key Principles
+1. **Always Visual**: When using browser tools via MCP, the `PageCursor` provides visual feedback (red arrow). Do not disable it.
+2. **DSP Integrity**: Modifications to `emg_core/dsp/features.py` must maintain TD10 feature dimensions (840 dims for 4ch) unless explicitly requested.
+3. **Cross-Language Safety**: When changing an API in `emg_core`, check if `app_ui` or `agent` needs an update to their schema/client.
+
+## Common Workflows
+- **Adding a new EMG command**:
+  1. Update `emg_core/config.py` labels.
+  2. Train new model via `/train` endpoint.
+  3. Update `agent/src/prompts.ts` if needed.
+- **Improving browser tools**:
+  1. Modify `mcp_server/src/tools/browser.ts`.
+  2. Ensure any new tool that interacts with the page uses `cursor.moveTo()` for visual traceability.
+
+## Environment
+- Python: 3.10+ (use `silentpilot/.venv`)
+- Node: 20+
+- EMG Reader: Set `EMG_READER=mock` in `.env` for testing without hardware.
