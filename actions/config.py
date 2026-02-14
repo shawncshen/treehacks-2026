@@ -13,6 +13,6 @@ load_dotenv(_project_root / ".env")
 OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
 OPENAI_MODEL: str = "gpt-4o-mini"
 BROWSER_HEADLESS: bool = False
-NUM_SUGGESTIONS: int = 10
+NUM_SUGGESTIONS: int = 12
 VIEWPORT_WIDTH: int = 1280
 VIEWPORT_HEIGHT: int = 800

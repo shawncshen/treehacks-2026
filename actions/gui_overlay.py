@@ -21,6 +21,9 @@ class GuiOverlay:
         self._canvas: tk.Canvas | None = None
         self._labels: list[tk.Label] = []
         self._entry: tk.Entry | None = None
+        self._status_dot: tk.Canvas | None = None
+        self._status_label: tk.Label | None = None
+        self._is_ready: bool = False
         self._build_ui()
 
     def _build_ui(self):
@@ -31,7 +34,16 @@ class GuiOverlay:
         main = ttk.Frame(self._root, padding=10)
         main.pack(fill=tk.BOTH, expand=True)
 
-        ttk.Label(main, text="Suggested actions (↑/↓ select, Enter execute)", font=("", 11, "bold")).pack(anchor=tk.W)
+        # Status bar at top
+        status_frame = ttk.Frame(main)
+        status_frame.pack(fill=tk.X, pady=(0, 8))
+        self._status_dot = tk.Canvas(status_frame, width=16, height=16, highlightthickness=0)
+        self._status_dot.pack(side=tk.LEFT, padx=(0, 6))
+        self._status_dot.create_oval(2, 2, 14, 14, fill="red", outline="", tags="dot")
+        self._status_label = ttk.Label(status_frame, text="Processing...", font=("", 11, "bold"))
+        self._status_label.pack(side=tk.LEFT)
+
+        ttk.Label(main, text="Suggested actions (↑/↓ select, Enter execute)", font=("", 10)).pack(anchor=tk.W)
 
         # Scrollable area for the 10 options
         container = ttk.Frame(main)
@@ -84,6 +96,19 @@ class GuiOverlay:
     def _on_quit(self):
         self._queue.put("quit")
         self._root.quit()
+
+    def _update_status(self, ready: bool):
+        self._is_ready = ready
+        if self._status_dot:
+            color = "#22c55e" if ready else "#ef4444"
+            self._status_dot.itemconfig("dot", fill=color)
+        if self._status_label:
+            text = "Ready — select an action" if ready else "Processing..."
+            self._status_label.config(text=text)
+
+    def set_status(self, ready: bool):
+        """Set the status indicator: green (ready) or red (processing). Thread-safe."""
+        self._root.after(0, self._update_status, ready)
 
     def _update_ui(self, suggestions: list["Suggestion"], selected_index: int, smart: bool = False):
         self._suggestions = suggestions

@@ -19,10 +19,10 @@ class Suggestion:
     description: str = ""
 
 
-SYSTEM_PROMPT = f"""You suggest browser actions. Given a URL and interactive elements list, return a JSON array of {NUM_SUGGESTIONS} actions. No markdown fences.
-Each: {{"id":N,"label":"short","action_type":"click|scroll|type|navigate|press_key","action_detail":{{...}},"description":"brief"}}
+SYSTEM_PROMPT = f"""Return JSON array of {NUM_SUGGESTIONS} browser actions. No markdown.
+Format: [{{"id":0,"label":"short","action_type":"click|scroll|type|navigate|press_key","action_detail":{{}},"description":"brief"}}]
 action_detail: click={{"element_id":N}}, scroll={{"direction":"up|down"}}, type={{"element_id":N,"text":"..."}}, navigate={{"url":"..."}}, press_key={{"key":"..."}}
-Use element_id from the list. Prefer navigate with href when available. Include 1 scroll option. Most useful first."""
+Use element_id from list. Prefer navigate+href. 1 scroll. Useful first."""
 
 
 class PageAnalyzer:
@@ -37,24 +37,22 @@ class PageAnalyzer:
         elements: list[dict],
     ) -> list[Suggestion]:
         """Analyze page elements and return suggested actions."""
-        # Build compact element list — only send top 30 most relevant
-        el_lines = []
-        for el in elements[:30]:
-            line = f"[{el['id']}] <{el['tag']}> \"{el['text']}\""
+        # Compact element list — top 20 only, minimal text
+        el_parts = []
+        for el in elements[:20]:
+            p = f"[{el['id']}]{el['tag']}:\"{el['text']}\""
             if el.get("href"):
-                line += f" href={el['href']}"
-            if el.get("type"):
-                line += f" type={el['type']}"
-            el_lines.append(line)
-        elements_text = "\n".join(el_lines) if el_lines else "(no elements)"
+                p += f" h={el['href']}"
+            el_parts.append(p)
+        el_text = "\n".join(el_parts) if el_parts else "(none)"
 
         response = await self._client.chat.completions.create(
             model=OPENAI_MODEL,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": f"URL: {current_url}\n\n{elements_text}"},
+                {"role": "user", "content": f"{current_url}\n{el_text}"},
             ],
-            max_tokens=800,
+            max_tokens=600,
             temperature=0,
         )
 
@@ -66,19 +64,15 @@ class PageAnalyzer:
         try:
             items = json.loads(raw)
         except json.JSONDecodeError:
-            return [
-                Suggestion(0, "Scroll down", "scroll", {"direction": "down"}, "Scroll down")
-            ]
+            return [Suggestion(0, "Scroll down", "scroll", {"direction": "down"}, "Scroll")]
 
-        suggestions = []
-        for item in items[:NUM_SUGGESTIONS]:
-            suggestions.append(
-                Suggestion(
-                    id=item.get("id", len(suggestions)),
-                    label=item.get("label", "Unknown"),
-                    action_type=item.get("action_type", "scroll"),
-                    action_detail=item.get("action_detail", {}),
-                    description=item.get("description", ""),
-                )
+        return [
+            Suggestion(
+                id=item.get("id", i),
+                label=item.get("label", "Unknown"),
+                action_type=item.get("action_type", "scroll"),
+                action_detail=item.get("action_detail", {}),
+                description=item.get("description", ""),
             )
-        return suggestions
+            for i, item in enumerate(items[:NUM_SUGGESTIONS])
+        ]

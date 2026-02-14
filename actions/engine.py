@@ -22,6 +22,7 @@ class ActionEngine:
         self._gpt_task: asyncio.Task | None = None
 
     async def start(self, url: str):
+        self.overlay.set_status(False)
         await self.browser.launch()
         await self.browser.goto(url)
         self._running = True
@@ -56,6 +57,14 @@ class ActionEngine:
             id=len(suggestions), label="Scroll Up", action_type="scroll",
             action_detail={"direction": "up"}, description="Scroll up",
         ))
+        suggestions.append(Suggestion(
+            id=len(suggestions), label="Go Back", action_type="history",
+            action_detail={"direction": "back"}, description="Previous page",
+        ))
+        suggestions.append(Suggestion(
+            id=len(suggestions), label="Go Forward", action_type="history",
+            action_detail={"direction": "forward"}, description="Next page",
+        ))
         return suggestions
 
     async def _fetch_gpt_suggestions(self, url: str, elements: list[dict]):
@@ -75,11 +84,17 @@ class ActionEngine:
         if self._gpt_task and not self._gpt_task.done():
             self._gpt_task.cancel()
 
+        # RED — extracting elements
+        self.overlay.set_status(False)
+
         # Step 1: Instant — extract elements and show immediately
         current_url = await self.browser.get_url()
         self._elements = await self.browser.get_interactive_elements()
         self._suggestions = self._elements_to_suggestions(self._elements)
         self._selected = 0
+
+        # GREEN — user can interact now
+        self.overlay.set_status(True)
         self.overlay.show(self._suggestions, self._selected, smart=False)
 
         # Step 2: Background — kick off GPT for smarter suggestions
@@ -109,6 +124,10 @@ class ActionEngine:
         # Cancel GPT if still running — we're moving on
         if self._gpt_task and not self._gpt_task.done():
             self._gpt_task.cancel()
+
+        # RED — executing action
+        self.overlay.set_status(False)
+
         suggestion = self._suggestions[self._selected]
         await self.execute(suggestion)
 
@@ -130,7 +149,6 @@ class ActionEngine:
                 el = self._find_element(detail.get("element_id", -1))
                 if el:
                     await self.browser.click_coords(el["cx"], el["cy"])
-                    await asyncio.sleep(0.1)
                 text = detail.get("text", "")
                 if text:
                     await self.browser.page_type(text)
@@ -144,9 +162,14 @@ class ActionEngine:
             elif suggestion.action_type == "press_key":
                 await self.browser.press_key(detail["key"])
 
+            elif suggestion.action_type == "history":
+                if detail.get("direction") == "back":
+                    await self.browser.go_back()
+                else:
+                    await self.browser.go_forward()
+
         except Exception as e:
             print(f"\n  Action failed: {e}", flush=True)
-        await asyncio.sleep(0.2)
 
     async def stop(self):
         self._running = False

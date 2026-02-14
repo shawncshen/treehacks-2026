@@ -156,12 +156,11 @@ class BrowserController:
         await self._page.evaluate(f"window.scrollBy({{top: {delta}, behavior: 'smooth'}})")
 
     async def goto(self, url: str):
-        """Navigate to a URL."""
+        """Navigate to a URL — returns as soon as page starts rendering."""
         try:
-            await self._page.goto(url, {"waitUntil": "domcontentloaded", "timeout": 15000})
+            await self._page.goto(url, {"waitUntil": "domcontentloaded", "timeout": 8000})
         except Exception:
             pass
-        await asyncio.sleep(0.5)
 
     async def type_text(self, selector: str, text: str):
         """Type text into an input element."""
@@ -174,6 +173,14 @@ class BrowserController:
     async def press_key(self, key: str):
         """Press a keyboard key (e.g. 'Enter', 'Tab')."""
         await self._page.keyboard.press(key)
+
+    async def go_back(self):
+        """Go back in browser history."""
+        await self._page.goBack({"waitUntil": "domcontentloaded", "timeout": 8000})
+
+    async def go_forward(self):
+        """Go forward in browser history."""
+        await self._page.goForward({"waitUntil": "domcontentloaded", "timeout": 8000})
 
     async def get_url(self) -> str:
         """Get the current page URL."""
