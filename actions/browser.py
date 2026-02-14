@@ -23,33 +23,8 @@ class BrowserController:
             ],
         )
         self._page = (await self._browser.pages())[0]
-        # Clear the fixed viewport override so the page follows window size
+        # Clear fixed viewport so page follows window size
         await self._page._client.send("Emulation.clearDeviceMetricsOverride")
-
-    async def _sync_viewport(self):
-        """Sync the viewport to match the actual window content area."""
-        try:
-            # Get the actual window bounds via CDP
-            resp = await self._page._client.send("Browser.getWindowForTarget")
-            window_id = resp["windowId"]
-            bounds_resp = await self._page._client.send(
-                "Browser.getWindowBounds", {"windowId": window_id}
-            )
-            bounds = bounds_resp["bounds"]
-            # Get chrome (toolbar) height by comparing outer vs inner
-            outer_h = bounds["height"]
-            outer_w = bounds["width"]
-            inner = await self._page.evaluate(
-                "() => ({w: window.innerWidth, h: window.innerHeight})"
-            )
-            # If inner matches outer roughly, viewport is already synced
-            # Otherwise update it
-            if abs(inner["w"] - outer_w) > 10 or abs(inner["h"] - (outer_h - (outer_h - inner["h"]))) > 10:
-                await self._page.setViewport(
-                    {"width": inner["w"], "height": inner["h"]}
-                )
-        except Exception:
-            pass
 
     async def get_viewport_size(self) -> tuple[int, int]:
         """Get the current actual viewport size from the browser."""
@@ -60,50 +35,109 @@ class BrowserController:
 
     async def screenshot(self) -> bytes:
         """Take a screenshot at current window size."""
-        # Ensure viewport matches window before capturing
-        await self._sync_viewport()
         return await self._page.screenshot({"type": "png"})
 
     async def get_interactive_elements(self) -> list[dict]:
-        """Extract all visible interactive elements with their bounding boxes.
+        """Extract all visible interactive elements with bounding boxes.
 
-        Returns a list of dicts: {id, tag, text, href, type, cx, cy, w, h}
-        where cx,cy is the center of the element's bounding box.
+        Covers: links, buttons, inputs, textareas, selects, role-based elements,
+        elements with click handlers, elements with cursor:pointer, and
+        any visible text element that looks clickable.
         """
         elements = await self._page.evaluate("""() => {
             const results = [];
             const seen = new Set();
-            const selectors = 'a, button, input, textarea, select, [role="button"], [onclick], [tabindex]';
-            const els = document.querySelectorAll(selectors);
             let id = 0;
-            for (const el of els) {
+            const vw = window.innerWidth;
+            const vh = window.innerHeight;
+
+            function getText(el) {
+                // Try multiple sources for element text
+                return (
+                    el.getAttribute('aria-label') ||
+                    el.innerText ||
+                    el.value ||
+                    el.title ||
+                    el.placeholder ||
+                    el.alt ||
+                    el.getAttribute('data-tooltip') ||
+                    ''
+                ).trim().substring(0, 80);
+            }
+
+            function isVisible(el) {
+                const style = window.getComputedStyle(el);
+                if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') return false;
                 const rect = el.getBoundingClientRect();
-                // Skip invisible/off-screen elements
-                if (rect.width < 5 || rect.height < 5) continue;
-                if (rect.top > window.innerHeight || rect.bottom < 0) continue;
-                if (rect.left > window.innerWidth || rect.right < 0) continue;
+                if (rect.width < 3 || rect.height < 3) return false;
+                if (rect.bottom < 0 || rect.top > vh || rect.right < 0 || rect.left > vw) return false;
+                return true;
+            }
 
-                const text = (el.innerText || el.value || el.getAttribute('aria-label') || el.title || el.placeholder || '').trim().substring(0, 80);
-                if (!text && el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA') continue;
+            function addElement(el) {
+                if (id >= 60) return;
+                if (!isVisible(el)) return;
+                const rect = el.getBoundingClientRect();
+                const cx = Math.round(rect.left + rect.width / 2);
+                const cy = Math.round(rect.top + rect.height / 2);
 
-                // Deduplicate by position
-                const key = `${Math.round(rect.left)},${Math.round(rect.top)}`;
-                if (seen.has(key)) continue;
+                // Deduplicate by center position (within 5px)
+                const key = `${Math.round(cx/5)*5},${Math.round(cy/5)*5}`;
+                if (seen.has(key)) return;
+
+                const text = getText(el);
+                // Allow inputs/textareas even without text
+                const isInput = el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT';
+                if (!text && !isInput) return;
+
                 seen.add(key);
-
                 results.push({
                     id: id++,
                     tag: el.tagName.toLowerCase(),
-                    text: text,
-                    href: el.href || '',
+                    text: text || `(${el.type || el.tagName.toLowerCase()} field)`,
+                    href: el.href || el.closest('a')?.href || '',
                     type: el.type || '',
-                    cx: Math.round(rect.left + rect.width / 2),
-                    cy: Math.round(rect.top + rect.height / 2),
+                    cx: cx,
+                    cy: cy,
                     w: Math.round(rect.width),
                     h: Math.round(rect.height)
                 });
-                if (id >= 50) break;  // cap at 50 elements
             }
+
+            // 1. Standard interactive elements
+            const standardSelectors = [
+                'a[href]',
+                'button',
+                'input',
+                'textarea',
+                'select',
+                '[role="button"]',
+                '[role="link"]',
+                '[role="tab"]',
+                '[role="menuitem"]',
+                '[role="option"]',
+                '[role="checkbox"]',
+                '[role="radio"]',
+                '[role="switch"]',
+                '[role="combobox"]',
+                '[role="searchbox"]',
+                '[onclick]',
+                '[tabindex]:not([tabindex="-1"])',
+                'summary',
+                'label[for]',
+            ].join(', ');
+            document.querySelectorAll(standardSelectors).forEach(addElement);
+
+            // 2. Elements with cursor:pointer that weren't caught above
+            const allVisible = document.querySelectorAll('div, span, li, img, svg, p, h1, h2, h3, td, th');
+            for (const el of allVisible) {
+                if (id >= 60) break;
+                const style = window.getComputedStyle(el);
+                if (style.cursor === 'pointer') {
+                    addElement(el);
+                }
+            }
+
             return results;
         }""")
         return elements
@@ -127,7 +161,7 @@ class BrowserController:
             await self._page.goto(url, {"waitUntil": "domcontentloaded", "timeout": 15000})
         except Exception:
             pass
-        await asyncio.sleep(1)
+        await asyncio.sleep(0.5)
 
     async def type_text(self, selector: str, text: str):
         """Type text into an input element."""

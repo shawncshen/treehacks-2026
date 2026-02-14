@@ -85,7 +85,7 @@ class GuiOverlay:
         self._queue.put("quit")
         self._root.quit()
 
-    def _update_ui(self, suggestions: list["Suggestion"], selected_index: int):
+    def _update_ui(self, suggestions: list["Suggestion"], selected_index: int, smart: bool = False):
         self._suggestions = suggestions
         self._selected_index = selected_index
         frame = self._list_frame
@@ -94,6 +94,9 @@ class GuiOverlay:
         for w in frame.winfo_children():
             w.destroy()
         self._labels.clear()
+        tag = "AI Suggestions" if smart else "Quick Actions"
+        header = ttk.Label(frame, text=tag, font=("", 9, "italic"), foreground="gray")
+        header.pack(anchor=tk.W, pady=(0, 4))
         for i, s in enumerate(suggestions):
             row = ttk.Frame(frame)
             row.pack(fill=tk.X, pady=2)
@@ -108,9 +111,9 @@ class GuiOverlay:
             if suggestions:
                 self._entry.insert(0, str(selected_index))
 
-    def show(self, suggestions: list["Suggestion"], selected_index: int):
+    def show(self, suggestions: list["Suggestion"], selected_index: int, smart: bool = False):
         """Update the GUI with current suggestions and selection (thread-safe)."""
-        self._root.after(0, self._update_ui, suggestions, selected_index)
+        self._root.after(0, self._update_ui, suggestions, selected_index, smart)
 
     def clear(self):
         """Clear the list (thread-safe)."""
