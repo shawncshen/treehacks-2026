@@ -84,7 +84,6 @@ class ActionEngine:
 
     async def run_cycle(self) -> list[Suggestion]:
         """Show DOM elements instantly, then upgrade with GPT in background."""
-        # Cancel any pending GPT task
         if self._gpt_task and not self._gpt_task.done():
             self._gpt_task.cancel()
 
