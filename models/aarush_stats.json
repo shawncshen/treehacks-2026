@@ -1,0 +1,54 @@
+{
+  "accuracy": 0.8038961038961038,
+  "labels": [
+    "CLOSE",
+    "LIPS",
+    "OPEN",
+    "TIP"
+  ],
+  "counts": {
+    "OPEN": 18,
+    "CLOSE": 14,
+    "TIP": 50,
+    "LIPS": 25
+  },
+  "n_samples": 107,
+  "summary": {
+    "REST": {
+      "count": 0,
+      "mean_energy": 0,
+      "min_energy": 0,
+      "max_energy": 0
+    },
+    "OPEN": {
+      "count": 18,
+      "mean_energy": 23.35129573367056,
+      "min_energy": 19.493742585763258,
+      "max_energy": 40.307083556720954
+    },
+    "CLOSE": {
+      "count": 14,
+      "mean_energy": 22.006242688327948,
+      "min_energy": 18.974720024284945,
+      "max_energy": 41.55837293080346
+    },
+    "TIP": {
+      "count": 50,
+      "mean_energy": 21.70277921435058,
+      "min_energy": 18.005326456965943,
+      "max_energy": 52.92004582386527
+    },
+    "BACK": {
+      "count": 0,
+      "mean_energy": 0,
+      "min_energy": 0,
+      "max_energy": 0
+    },
+    "LIPS": {
+      "count": 25,
+      "mean_energy": 24.126276024733723,
+      "min_energy": 19.84555365818752,
+      "max_energy": 36.55723603952185
+    }
+  }
+}

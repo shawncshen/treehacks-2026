@@ -11,7 +11,7 @@ backward compatibility.
 """
 
 import numpy as np
-from scipy.fft import rfft
+from numpy.fft import rfft
 
 
 # ══════════════════════════════════════════════════════════════════════════════

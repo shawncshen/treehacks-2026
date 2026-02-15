@@ -438,31 +438,44 @@ class DataStore:
 # ═══════════════════════════════════════════════════════════════════════════════
 
 class ModelManager:
-    """Handles training and prediction."""
+    """Handles training and prediction. Loads from JSON stats or sklearn."""
 
     def __init__(self, user):
         self.user = user
         self.models_dir = os.path.join(PROJECT_ROOT, "models")
         os.makedirs(self.models_dir, exist_ok=True)
         self.model_path = os.path.join(self.models_dir, f"{user}_model.joblib")
+        self.stats_path = os.path.join(self.models_dir, f"{user}_stats.json")
         self.clf = None
         self.labels = []
         self.accuracy = 0
         self.n_samples = 0
+        self.precomputed_stats = None
         self._load()
 
     def _load(self):
+        # Load pre-computed stats (always available, works on Vercel)
+        if os.path.exists(self.stats_path):
+            with open(self.stats_path) as f:
+                self.precomputed_stats = json.load(f)
+            self.labels = self.precomputed_stats["labels"]
+            self.accuracy = self.precomputed_stats.get("accuracy", 0)
+            self.n_samples = self.precomputed_stats.get("n_samples", 0)
+        # Also try loading sklearn model (for local use with training)
         if os.path.exists(self.model_path):
-            import joblib
-            data = joblib.load(self.model_path)
-            self.clf = data["model"]
-            self.labels = data["labels"]
-            self.accuracy = data.get("accuracy", 0)
-            self.n_samples = data.get("n_samples", 0)
+            try:
+                import joblib
+                data = joblib.load(self.model_path)
+                self.clf = data["model"]
+                self.labels = data["labels"]
+                self.accuracy = data.get("accuracy", 0)
+                self.n_samples = data.get("n_samples", 0)
+            except ImportError:
+                pass  # sklearn not available (Vercel), use precomputed stats
 
     @property
     def is_loaded(self):
-        return self.clf is not None
+        return self.clf is not None or self.precomputed_stats is not None
 
     def train(self, datastore: DataStore):
         from sklearn.ensemble import RandomForestClassifier
@@ -556,10 +569,20 @@ class ModelManager:
         features = extract_features(segment, sample_rate=SAMPLE_RATE)
         features = np.nan_to_num(features, nan=0.0, posinf=0.0, neginf=0.0).reshape(1, -1)
 
-        prediction = self.clf.predict(features)[0]
-        probas = self.clf.predict_proba(features)[0]
-        confidence = float(max(probas))
+        if self.onnx_session:
+            input_name = self.onnx_session.get_inputs()[0].name
+            pred_result = self.onnx_session.run(None, {input_name: features.astype(np.float32)})
+            prediction = pred_result[0][0]
+            # ONNX RandomForest outputs probabilities as list of dicts
+            proba_list = pred_result[1]
+            probas = np.array([d[self.labels[i]] if isinstance(d, dict) else 0
+                              for i, d in enumerate(proba_list[0])] if isinstance(proba_list[0], list)
+                              else [proba_list[0].get(l, 0) for l in self.labels])
+        else:
+            prediction = self.clf.predict(features)[0]
+            probas = self.clf.predict_proba(features)[0]
 
+        confidence = float(max(probas))
         top3_idx = np.argsort(probas)[-3:][::-1]
         top3 = [{"label": self.labels[i], "prob": float(probas[i])} for i in top3_idx]
 
@@ -924,40 +947,18 @@ async def model_info():
 
 @app.get("/api/model/stats")
 async def model_stats():
-    """Return full model evaluation stats from existing data + model."""
-    if not model_mgr.is_loaded or not datastore or len(datastore.segments) == 0:
+    """Return full model evaluation stats (from pre-computed JSON or live)."""
+    if not model_mgr.is_loaded:
         return {"error": "No model or data available"}
 
-    from sklearn.metrics import classification_report, confusion_matrix
-
-    segments = datastore.segments
-    labels = datastore.labels
-
-    X = np.array([extract_features(seg, sample_rate=SAMPLE_RATE) for seg in segments])
-    y = np.array(labels)
-
-    if np.any(np.isnan(X)) or np.any(np.isinf(X)):
-        X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
-
-    label_set = sorted(set(y))
-    counts = {l: int(np.sum(y == l)) for l in label_set}
-
-    y_pred = model_mgr.clf.predict(X)
-    report = classification_report(y, y_pred, zero_division=0, output_dict=True)
-    cm = confusion_matrix(y, y_pred, labels=label_set)
-
-    importances = model_mgr.clf.feature_importances_
-    top_idx = np.argsort(importances)[-10:][::-1]
-    top_features = [{"index": int(i), "importance": float(importances[i])} for i in top_idx]
+    # Use pre-computed stats if available
+    if model_mgr.precomputed_stats:
+        return model_mgr.precomputed_stats
 
     return {
         "accuracy": model_mgr.accuracy,
-        "labels": label_set,
-        "counts": counts,
-        "confusion_matrix": cm.tolist(),
-        "report": {k: v for k, v in report.items() if isinstance(v, dict)},
-        "top_features": top_features,
-        "n_samples": len(X),
+        "labels": model_mgr.labels,
+        "n_samples": model_mgr.n_samples,
     }
 
 
