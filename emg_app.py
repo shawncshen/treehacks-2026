@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-SilentPilot - EMG Calibration & Inference GUI
+MindOS - EMG Calibration & Inference GUI
 ==============================================
 Single-process web app: FastAPI + embedded HTML/JS frontend.
 
@@ -788,7 +788,7 @@ class SpellEngine:
 #  FastAPI App
 # ═══════════════════════════════════════════════════════════════════════════════
 
-app = FastAPI(title="SilentPilot EMG App")
+app = FastAPI(title="MindOS EMG App")
 
 # Global state (set in main or auto-init)
 stream: EMGStream = None
@@ -1101,7 +1101,7 @@ HTML_CONTENT = r"""<!DOCTYPE html>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>SilentPilot - EMG Calibration</title>
+<title>MindOS - EMG Calibration</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
 <style>
 :root {
@@ -1283,7 +1283,7 @@ body {
 
 <!-- Header -->
 <div class="header">
-  <h1>SilentPilot</h1>
+  <h1>MindOS</h1>
   <span style="font-size:12px;color:var(--text2)">Jaw EMG &rarr; Silent Speech Neural Interface</span>
   <div class="status">
     <span><span class="dot green" id="dot-serial"></span>Sensors</span>
@@ -1461,7 +1461,7 @@ body {
   <div class="card" style="border-color:#58a6ff40;background:linear-gradient(135deg, #161b22 0%, #0d1117 100%);">
     <h3 style="color:var(--accent);font-size:16px;letter-spacing:0;">Neural Network Pipeline</h3>
     <p style="font-size:13px;color:var(--text2);line-height:1.7;margin-bottom:12px;">
-      SilentPilot employs a <span style="color:var(--text);">hybrid CNN-LSTM architecture</span> for silent speech gesture classification,
+      MindOS employs a <span style="color:var(--text);">hybrid CNN-LSTM architecture</span> for silent speech gesture classification,
       inspired by the <span style="color:var(--accent);">EMG-UKA corpus research</span> (Wand & Schultz, 2014) and MIT's AlterEgo project.
       Raw jaw EMG signals are first decomposed via <span style="color:var(--text);">double moving-average filtering</span>
       into low-frequency articulatory trajectories and high-frequency muscle activation patterns.
@@ -2727,7 +2727,7 @@ def detect_port():
 
 
 def main():
-    parser = argparse.ArgumentParser(description="SilentPilot EMG Calibration App")
+    parser = argparse.ArgumentParser(description="MindOS EMG Calibration App")
     parser.add_argument("--port", default=None, help="Serial port (auto-detect if omitted)")
     parser.add_argument("--user", default="aarush", help="User ID")
     parser.add_argument("--host", default="0.0.0.0", help="Server host")
@@ -2738,7 +2738,7 @@ def main():
 
     global stream, datastore, model_mgr, spell_engine
 
-    print(f"\n  SilentPilot EMG Calibration App")
+    print(f"\n  MindOS EMG Calibration App")
     print(f"  ================================")
     print(f"  User: {args.user}")
 
