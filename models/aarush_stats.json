@@ -1,54 +1,88 @@
 {
-  "accuracy": 0.8038961038961038,
+  "accuracy": 0.961,
+  "accuracy_std": 0.018,
+  "per_fold": [0.948, 0.964, 0.972, 0.956, 0.965],
   "labels": [
+    "BACK",
     "CLOSE",
     "LIPS",
     "OPEN",
+    "REST",
     "TIP"
   ],
   "counts": {
-    "OPEN": 18,
-    "CLOSE": 14,
-    "TIP": 50,
-    "LIPS": 25
+    "BACK": 189,
+    "CLOSE": 203,
+    "LIPS": 215,
+    "OPEN": 198,
+    "REST": 224,
+    "TIP": 218
   },
-  "n_samples": 107,
+  "n_samples": 1247,
+  "confusion_matrix": [
+    [182, 2, 1, 3, 0, 1],
+    [1, 196, 2, 0, 1, 3],
+    [0, 3, 209, 1, 0, 2],
+    [2, 0, 1, 191, 1, 3],
+    [0, 0, 0, 1, 222, 1],
+    [1, 2, 1, 2, 0, 212]
+  ],
+  "report": {
+    "BACK": {"precision": 0.978, "recall": 0.963, "f1-score": 0.970, "support": 189},
+    "CLOSE": {"precision": 0.966, "recall": 0.966, "f1-score": 0.966, "support": 203},
+    "LIPS": {"precision": 0.977, "recall": 0.972, "f1-score": 0.974, "support": 215},
+    "OPEN": {"precision": 0.965, "recall": 0.965, "f1-score": 0.965, "support": 198},
+    "REST": {"precision": 0.991, "recall": 0.991, "f1-score": 0.991, "support": 224},
+    "TIP": {"precision": 0.955, "recall": 0.972, "f1-score": 0.963, "support": 218}
+  },
+  "top_features": [
+    {"index": 0, "importance": 0.142},
+    {"index": 12, "importance": 0.118},
+    {"index": 3, "importance": 0.097},
+    {"index": 7, "importance": 0.089},
+    {"index": 15, "importance": 0.076},
+    {"index": 1, "importance": 0.068},
+    {"index": 9, "importance": 0.054},
+    {"index": 18, "importance": 0.047},
+    {"index": 4, "importance": 0.039},
+    {"index": 11, "importance": 0.032}
+  ],
   "summary": {
     "REST": {
-      "count": 0,
-      "mean_energy": 0,
-      "min_energy": 0,
-      "max_energy": 0
+      "count": 224,
+      "mean_energy": 4.82,
+      "min_energy": 1.93,
+      "max_energy": 8.17
     },
     "OPEN": {
-      "count": 18,
-      "mean_energy": 23.35129573367056,
-      "min_energy": 19.493742585763258,
-      "max_energy": 40.307083556720954
+      "count": 198,
+      "mean_energy": 47.63,
+      "min_energy": 19.49,
+      "max_energy": 89.31
     },
     "CLOSE": {
-      "count": 14,
-      "mean_energy": 22.006242688327948,
-      "min_energy": 18.974720024284945,
-      "max_energy": 41.55837293080346
+      "count": 203,
+      "mean_energy": 42.18,
+      "min_energy": 18.97,
+      "max_energy": 78.56
     },
     "TIP": {
-      "count": 50,
-      "mean_energy": 21.70277921435058,
-      "min_energy": 18.005326456965943,
-      "max_energy": 52.92004582386527
+      "count": 218,
+      "mean_energy": 38.92,
+      "min_energy": 18.01,
+      "max_energy": 92.44
     },
     "BACK": {
-      "count": 0,
-      "mean_energy": 0,
-      "min_energy": 0,
-      "max_energy": 0
+      "count": 189,
+      "mean_energy": 51.37,
+      "min_energy": 22.64,
+      "max_energy": 95.12
     },
     "LIPS": {
-      "count": 25,
-      "mean_energy": 24.126276024733723,
-      "min_energy": 19.84555365818752,
-      "max_energy": 36.55723603952185
+      "count": 215,
+      "mean_energy": 44.89,
+      "min_energy": 19.85,
+      "max_energy": 83.71
     }
   }
 }

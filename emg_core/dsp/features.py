@@ -204,6 +204,9 @@ def _double_moving_average(x: np.ndarray, window: int = 9) -> np.ndarray:
     First pass: forward moving average. Second pass: moving average of the
     result. This approximates the slow articulation movement component.
     """
+    if len(x) < window:
+        # Signal shorter than kernel -- just return the mean (constant smooth)
+        return np.full_like(x, np.mean(x))
     kernel = np.ones(window) / window
     # First pass
     w1 = np.convolve(x, kernel, mode='same')
