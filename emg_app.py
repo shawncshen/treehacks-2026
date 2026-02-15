@@ -997,18 +997,84 @@ async def spell_lookup(req: SpellLookupRequest):
     return spell_engine.lookup(req.groups, req.context)
 
 
+# ── HTTP polling fallback for serverless (Vercel) ──
+
+import math, random
+_poll_t = 0
+
+@app.get("/api/emg/stream")
+async def emg_poll():
+    """Returns a single frame of EMG data. Use as polling fallback when WebSockets are unavailable."""
+    global _poll_t
+    N = 250
+    if stream:
+        buf = stream.snapshot(last_n=N)
+        if buf is not None and len(buf) > 0:
+            ch0 = buf[:, 0].tolist()
+            ch1 = buf[:, 1].tolist()
+            mu0 = float(np.mean(buf[:, 0]))
+            mu1 = float(np.mean(buf[:, 1]))
+        else:
+            ch0 = [0]*N
+            ch1 = [0]*N
+            mu0 = 0.0
+            mu1 = 0.0
+        health0 = "ok" if 10 < mu0 < 900 else ("high" if mu0 >= 900 else "low")
+        health1 = "ok" if 10 < mu1 < 900 else ("high" if mu1 >= 900 else "low")
+        return {
+            "ch0": ch0, "ch1": ch1,
+            "n_raw": len(ch0),
+            "mu0": mu0, "mu1": mu1,
+            "health0": health0, "health1": health1,
+            "recording": stream.is_recording,
+        }
+    else:
+        ch0 = [50 + 12*math.sin((_poll_t+i)*0.05) + 8*math.sin((_poll_t+i)*0.13) + (random.random()-0.5)*10 for i in range(N)]
+        ch1 = [30 + 8*math.sin((_poll_t+i)*0.07) + 5*math.sin((_poll_t+i)*0.17) + (random.random()-0.5)*7 for i in range(N)]
+        _poll_t += 5
+        return {
+            "ch0": ch0, "ch1": ch1,
+            "n_raw": N,
+            "mu0": 50.0, "mu1": 30.0,
+            "health0": "ok", "health1": "ok",
+            "recording": False,
+        }
+
+
 # ── WebSocket for live streaming ──
 
 @app.websocket("/ws/emg")
 async def ws_emg(websocket: WebSocket):
     await websocket.accept()
     try:
+        import math, random
         _t = 0
         while True:
+            N = 250
             if stream:
-                # Hardware plugged in — show demo waveform around 50/30
-                import math, random
-                N = 250
+                # Hardware plugged in — read real data from the stream
+                buf = stream.snapshot(last_n=N)
+                if buf is not None and len(buf) > 0:
+                    ch0 = buf[:, 0].tolist()
+                    ch1 = buf[:, 1].tolist()
+                    mu0 = float(np.mean(buf[:, 0]))
+                    mu1 = float(np.mean(buf[:, 1]))
+                else:
+                    ch0 = [0]*N
+                    ch1 = [0]*N
+                    mu0 = 0.0
+                    mu1 = 0.0
+                health0 = "ok" if 10 < mu0 < 900 else ("high" if mu0 >= 900 else "low")
+                health1 = "ok" if 10 < mu1 < 900 else ("high" if mu1 >= 900 else "low")
+                await websocket.send_json({
+                    "ch0": ch0, "ch1": ch1,
+                    "n_raw": len(ch0),
+                    "mu0": mu0, "mu1": mu1,
+                    "health0": health0, "health1": health1,
+                    "recording": stream.is_recording,
+                })
+            else:
+                # No hardware — send simulated demo waveform
                 ch0 = [50 + 12*math.sin((_t+i)*0.05) + 8*math.sin((_t+i)*0.13) + (random.random()-0.5)*10 for i in range(N)]
                 ch1 = [30 + 8*math.sin((_t+i)*0.07) + 5*math.sin((_t+i)*0.17) + (random.random()-0.5)*7 for i in range(N)]
                 _t += 5
@@ -1677,17 +1743,42 @@ function switchTab(id) {
 
 let ws = null;
 let monitorChart = null;
+let usePolling = false;
+let pollTimer = null;
 
 function initWebSocket() {
   const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
   ws = new WebSocket(proto + '//' + location.host + '/ws/emg');
+  let opened = false;
+  ws.onopen = () => { opened = true; };
   ws.onmessage = (e) => {
     const d = JSON.parse(e.data);
     updateMonitor(d);
   };
+  ws.onerror = () => {
+    if (!opened) {
+      console.log('WebSocket unavailable, falling back to HTTP polling');
+      usePolling = true;
+      startPolling();
+    }
+  };
   ws.onclose = () => {
+    if (usePolling) return;
     setTimeout(initWebSocket, 2000);
   };
+}
+
+function startPolling() {
+  if (pollTimer) return;
+  async function poll() {
+    try {
+      const resp = await fetch('/api/emg/stream');
+      const d = await resp.json();
+      updateMonitor(d);
+    } catch(e) {}
+    if (usePolling) pollTimer = setTimeout(poll, 100);
+  }
+  poll();
 }
 
 function initMonitorChart() {
@@ -1789,6 +1880,10 @@ async function captureLetter(letter, group) {
     });
     const data = await resp.json();
     hideCountdown();
+    if (data.error) {
+      showToast('Capture failed: ' + data.error, 'error');
+      return;
+    }
     showCaptureResult(data);
   } catch(err) {
     hideCountdown();
@@ -1806,6 +1901,10 @@ async function captureRest() {
     });
     const data = await resp.json();
     hideCountdown();
+    if (data.error) {
+      showToast('Capture failed: ' + data.error, 'error');
+      return;
+    }
     showCaptureResult(data);
   } catch(err) {
     hideCountdown();
@@ -2063,6 +2162,10 @@ async function batchCaptureOne(letter, group) {
     });
     const data = await resp.json();
     hideCountdown();
+    if (data.error) {
+      showToast('Capture failed: ' + data.error, 'error');
+      return 'error';
+    }
     showCaptureResult(data);
   } catch(err) {
     hideCountdown();
