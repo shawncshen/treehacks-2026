@@ -27,7 +27,7 @@ import serial
 import serial.tools.list_ports
 
 # Add project root to path
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, PROJECT_ROOT)
 from emg_core.dsp.features import extract_features
 
@@ -718,25 +718,18 @@ class SpellEngine:
 
     def _load_dictionary(self):
         words = set()
-        for path in ["/usr/share/dict/words", "/usr/share/dict/american-english"]:
-            if os.path.exists(path):
-                with open(path) as f:
-                    for line in f:
-                        w = line.strip().lower()
-                        if 2 <= len(w) <= 12 and w.isalpha():
-                            if all(c in LETTER_TO_GROUP for c in w):
-                                words.add(w)
-                break
+        valid_chars = set(LETTER_TO_GROUP.keys())
+        # Use COMMON_WORDS for fast startup; skip large system dictionaries
+        for w in COMMON_WORDS:
+            if set(w) <= valid_chars:
+                words.add(w)
         custom_path = os.path.join(PROJECT_ROOT, "data", "custom_dictionary.txt")
         if os.path.exists(custom_path):
             with open(custom_path) as f:
                 for line in f:
                     w = line.strip().lower()
-                    if w and w.isalpha() and all(c in LETTER_TO_GROUP for c in w):
+                    if w and w.isalpha() and set(w) <= valid_chars:
                         words.add(w)
-        for w in COMMON_WORDS:
-            if all(c in LETTER_TO_GROUP for c in w):
-                words.add(w)
         return words
 
     def lookup(self, groups, context=""):
@@ -911,6 +904,45 @@ async def train_model():
 @app.get("/api/model/info")
 async def model_info():
     return model_mgr.info()
+
+
+@app.get("/api/model/stats")
+async def model_stats():
+    """Return full model evaluation stats from existing data + model."""
+    if not model_mgr.is_loaded or not datastore or len(datastore.segments) == 0:
+        return {"error": "No model or data available"}
+
+    from sklearn.metrics import classification_report, confusion_matrix
+
+    segments = datastore.segments
+    labels = datastore.labels
+
+    X = np.array([extract_features(seg, sample_rate=SAMPLE_RATE) for seg in segments])
+    y = np.array(labels)
+
+    if np.any(np.isnan(X)) or np.any(np.isinf(X)):
+        X = np.nan_to_num(X, nan=0.0, posinf=0.0, neginf=0.0)
+
+    label_set = sorted(set(y))
+    counts = {l: int(np.sum(y == l)) for l in label_set}
+
+    y_pred = model_mgr.clf.predict(X)
+    report = classification_report(y, y_pred, zero_division=0, output_dict=True)
+    cm = confusion_matrix(y, y_pred, labels=label_set)
+
+    importances = model_mgr.clf.feature_importances_
+    top_idx = np.argsort(importances)[-10:][::-1]
+    top_features = [{"index": int(i), "importance": float(importances[i])} for i in top_idx]
+
+    return {
+        "accuracy": model_mgr.accuracy,
+        "labels": label_set,
+        "counts": counts,
+        "confusion_matrix": cm.tolist(),
+        "report": {k: v for k, v in report.items() if isinstance(v, dict)},
+        "top_features": top_features,
+        "n_samples": len(X),
+    }
 
 
 @app.post("/api/predict")
@@ -2292,13 +2324,37 @@ async function init() {
   buildLetterGrid();
   await loadProgress();
 
-  // Check model status
+  // Check model status and load stats
   try {
     const resp = await fetch('/api/model/info');
     const info = await resp.json();
     if (info.loaded) {
       document.getElementById('dot-model').className = 'dot green';
       document.getElementById('model-acc-header').textContent = (info.accuracy*100).toFixed(1) + '%';
+
+      // Auto-load full training stats
+      const statsResp = await fetch('/api/model/stats');
+      const data = await statsResp.json();
+      if (!data.error) {
+        document.getElementById('train-results').style.display = 'block';
+        document.getElementById('train-accuracy').textContent = (data.accuracy * 100).toFixed(1) + '%';
+        document.getElementById('train-samples').textContent = data.n_samples;
+        document.getElementById('train-classes').textContent = data.labels.length;
+
+        const accEl = document.getElementById('train-accuracy');
+        accEl.style.color = data.accuracy > 0.8 ? 'var(--green)' : data.accuracy > 0.6 ? 'var(--yellow)' : 'var(--red)';
+
+        buildConfusionMatrix(data.confusion_matrix, data.labels);
+        buildClassMetrics(data.report, data.labels);
+        buildFeatureImportance(data.top_features);
+
+        // Populate sample browser dropdown
+        const sel = document.getElementById('browse-class');
+        sel.innerHTML = '<option value="">Select class...</option>';
+        for (const l of data.labels) {
+          sel.innerHTML += '<option value="' + l + '">' + l + ' (' + (data.counts[l]||0) + ')</option>';
+        }
+      }
     } else {
       document.getElementById('dot-model').className = 'dot yellow';
     }
@@ -2330,24 +2386,33 @@ def main():
     parser.add_argument("--host", default="0.0.0.0", help="Server host")
     parser.add_argument("--web-port", type=int, default=8080, help="Web server port")
     parser.add_argument("--no-browser", action="store_true", help="Don't auto-open browser")
+    parser.add_argument("--no-serial", action="store_true", help="Run without serial/Arduino connection")
     args = parser.parse_args()
 
     global stream, datastore, model_mgr, spell_engine
 
-    # Serial connection
-    port = args.port or detect_port()
-    if not port:
-        print("  ERROR: No Arduino found. Plug in and retry, or use --port")
-        sys.exit(1)
-
     print(f"\n  SilentPilot EMG Calibration App")
     print(f"  ================================")
-    print(f"  Serial port: {port}")
     print(f"  User: {args.user}")
 
-    print(f"  Connecting to Arduino...", end=" ", flush=True)
-    stream = EMGStream(port)
-    print("OK")
+    # Serial connection (optional)
+    if args.no_serial:
+        print("  Serial: SKIPPED (data-only mode)")
+        stream = None
+    else:
+        port = args.port or detect_port()
+        if port:
+            print(f"  Serial port: {port}")
+            try:
+                print(f"  Connecting to Arduino...", end=" ", flush=True)
+                stream = EMGStream(port)
+                print("OK")
+            except Exception as e:
+                print(f"FAILED ({e})")
+                stream = None
+        else:
+            print("  No Arduino found -- running in data-only mode")
+            stream = None
 
     print(f"  Loading data store...", end=" ", flush=True)
     datastore = DataStore(args.user)
