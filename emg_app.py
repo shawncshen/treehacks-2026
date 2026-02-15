@@ -763,11 +763,27 @@ class SpellEngine:
 
 app = FastAPI(title="SilentPilot EMG App")
 
-# Global state (set in main)
+# Global state (set in main or auto-init)
 stream: EMGStream = None
 datastore: DataStore = None
 model_mgr: ModelManager = None
 spell_engine: SpellEngine = None
+
+
+def auto_init(user="aarush"):
+    """Auto-initialize for serverless (Vercel) — called on first import."""
+    global stream, datastore, model_mgr, spell_engine
+    if datastore is not None:
+        return  # already initialized
+    stream = None
+    datastore = DataStore(user)
+    model_mgr = ModelManager(user)
+    spell_engine = SpellEngine()
+
+
+# Auto-init when imported (for Vercel serverless)
+if os.environ.get("VERCEL") or os.environ.get("AUTO_INIT"):
+    auto_init()
 
 
 # ── Pydantic models ──
