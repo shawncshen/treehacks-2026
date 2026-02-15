@@ -2384,7 +2384,7 @@ def main():
     parser.add_argument("--port", default=None, help="Serial port (auto-detect if omitted)")
     parser.add_argument("--user", default="aarush", help="User ID")
     parser.add_argument("--host", default="0.0.0.0", help="Server host")
-    parser.add_argument("--web-port", type=int, default=8080, help="Web server port")
+    parser.add_argument("--web-port", type=int, default=int(os.environ.get("PORT", 8080)), help="Web server port")
     parser.add_argument("--no-browser", action="store_true", help="Don't auto-open browser")
     parser.add_argument("--no-serial", action="store_true", help="Run without serial/Arduino connection")
     args = parser.parse_args()
