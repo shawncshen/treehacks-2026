@@ -1,4 +1,4 @@
-# SilentPilot — Claude Session Notes
+# MindOS — Claude Session Notes
 
 ## Project Location
 - Repo: `/Users/shawnshen/Downloads/treehacks/` (git root)

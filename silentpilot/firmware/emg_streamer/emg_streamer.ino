@@ -1,5 +1,5 @@
 /**
- * SilentPilot EMG Streamer Firmware
+ * MindOS EMG Streamer Firmware
  * 
  * Target: ESP32 (tested on ESP32-WROOM-32)
  * 

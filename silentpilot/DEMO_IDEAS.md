@@ -1,4 +1,4 @@
-# SilentPilot: Demo Concepts for Maximum Impact
+# MindOS: Demo Concepts for Maximum Impact
 
 ## What Would Make Judges and Press Lose Their Minds
 

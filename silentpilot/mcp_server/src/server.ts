@@ -1,5 +1,5 @@
 /**
- * MCP Server with SSE transport for SilentPilot.
+ * MCP Server with SSE transport for MindOS.
  *
  * Exposes 8 Playwright-backed browser tools via the Model Context Protocol.
  * The OpenAI Responses API connects to this server to control a browser.

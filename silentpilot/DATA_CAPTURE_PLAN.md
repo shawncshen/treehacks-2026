@@ -1,4 +1,4 @@
-# SilentPilot Data Capture & Accuracy Expectations
+# MindOS Data Capture & Accuracy Expectations
 
 ## Master Planning Document for Hackathon Sensor Deployment
 
@@ -64,7 +64,7 @@ The critical insight: these modes are **layered, not exclusive**. We build the p
 - Vocalized (audible) EMG achieves 4% WER — the gap between audible and silent is the fundamental challenge
 - These systems use sophisticated encoder-decoder architectures trained on parallel audible+silent data
 
-### 2.3 What This Means For Us
+### 2.3 What This Means For MindOS
 
 With 2 hours of data (not 20), classical ML (not large DNNs), and without parallel audio targets, our ceiling is lower than Gaddy's. But we have a weapon they didn't: **an LLM as the language model**. GPT-4.1-nano has far stronger language priors than any n-gram or small neural LM from 2020.
 

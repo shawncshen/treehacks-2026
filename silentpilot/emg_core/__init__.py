@@ -1,1 +1,1 @@
-"""SilentPilot EMG Core - sEMG signal processing and classification."""
+"""MindOS EMG Core - sEMG signal processing and classification."""

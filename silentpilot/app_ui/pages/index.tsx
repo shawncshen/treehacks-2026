@@ -1,5 +1,5 @@
 /**
- * Home / navigation page for SilentPilot UI.
+ * Home / navigation page for MindOS UI.
  */
 
 import Link from "next/link";
@@ -12,7 +12,7 @@ export default function Home() {
     <div className="min-h-screen flex flex-col items-center justify-center p-8">
       <div className="text-center mb-12">
         <h1 className="text-5xl font-bold mb-3">
-          Silent<span className="text-sp-accent">Pilot</span>
+          Mind<span className="text-sp-accent">OS</span>
         </h1>
         <p className="text-gray-400 text-lg">
           Control your computer with silent speech

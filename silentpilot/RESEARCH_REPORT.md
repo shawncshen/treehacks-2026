@@ -1,16 +1,17 @@
-# SilentPilot EMG Research Report
+# MindOS EMG Research Report
 
 ## Experimental Findings from EMG-UKA Corpus Evaluation
 
 **Date:** February 8, 2026
 **Dataset:** EMG-UKA Trial Corpus (real sEMG silent speech, 4 speakers, 6 channels @ 600 Hz)
 **Reference:** AlterEgo paper (Kapur et al., MIT Media Lab, IUI 2018) — 92% on 10-class digits
+**Project:** MindOS
 
 ---
 
 ## 1. Executive Summary
 
-We evaluated our SilentPilot pipeline against real silent speech EMG data across 7 experimental tracks: word-level classification, phone-level classification, 5 neural architectures, real command word classification, synthetic word composition, and LLM-assisted sentence decoding. The key findings:
+We evaluated our MindOS pipeline against real silent speech EMG data across 7 experimental tracks: word-level classification, phone-level classification, 5 neural architectures, real command word classification, synthetic word composition, and LLM-assisted sentence decoding. The key findings:
 
 - **Random Forest on handcrafted features is the definitive winner** for our data regime (~2,000 samples per speaker). It outperforms every neural architecture tested.
 - **62.5% accuracy on 5-command word classification** (3.1x chance) from real silent speech EMG — our best result.
@@ -288,7 +289,7 @@ The LLM decoding approach is the right *long-term* architecture for open-vocabul
 
 ### 4.2 Software Pipeline (Already Built)
 
-Our existing pipeline is ready:
+Our existing MindOS pipeline is ready:
 
 ```
 Raw EMG → Bandpass 1.3–50 Hz → 60 Hz Notch → DC Removal
@@ -428,7 +429,7 @@ The gap between our 62.5% on EMG-UKA and the predicted 80–90% is explained by:
     - With dedicated hardware + PTT calibration, phone accuracy should reach 40–70% (vs. 6% from continuous silent speech in EMG-UKA)
     - At 50%+ phone top-5 accuracy, constrained-vocabulary LLM decoding becomes viable
     - At 70%+, open-vocabulary decoding is possible — the LLM fills gaps using language model priors
-    - This would enable natural silent speech input (not just discrete commands) and is the long-term vision for SilentPilot
+    - This would enable natural silent speech input (not just discrete commands) and is the long-term vision for MindOS
     - Even at 60% per-word accuracy, a language model can boost effective accuracy to 85%+ by constraining predictions to likely word sequences — this is standard in production ASR
 
 ---
@@ -485,4 +486,4 @@ The gap between our 62.5% on EMG-UKA and the predicted 80–90% is explained by:
 
 ---
 
-*Report generated from experiments on EMG-UKA Trial Corpus (Dez Zuazo et al.) using the SilentPilot pipeline. All per-speaker results use separate train/test splits defined by the corpus.*
+*Report generated from experiments on EMG-UKA Trial Corpus (Dez Zuazo et al.) using the MindOS pipeline. All per-speaker results use separate train/test splits defined by the corpus.*

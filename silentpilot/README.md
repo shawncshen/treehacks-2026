@@ -1,4 +1,4 @@
-# SilentPilot
+# MindOS
 
 **sEMG-powered silent speech interface for computer control** -- inspired by MIT's AlterEgo.
 

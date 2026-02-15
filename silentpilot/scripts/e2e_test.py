@@ -67,7 +67,7 @@ async def collect_samples(reader: MockReader, command: str, n_samples: int,
 
 async def main():
     print("=" * 60)
-    print("SilentPilot E2E Test (Paper-Inspired)")
+    print("MindOS E2E Test (Paper-Inspired)")
     print("=" * 60)
 
     user_id = "e2e_test"

@@ -1,4 +1,4 @@
-# SilentPilot: 3-Sensor Hackathon Build Plan
+# MindOS: 3-Sensor Hackathon Build Plan
 
 ## What We Have, What We Can Build, What to Expect
 
@@ -329,7 +329,7 @@ The jaw/chin/throat trio excels at distinguishing:
 
 ## Recommended Demo With 3 Sensors
 
-Given the constraints, here's what we should actually demo:
+Given the constraints, here's what MindOS should actually demo:
 
 ### Primary Demo: Silent Browser Control (Demo 5 from DEMO_IDEAS.md)
 
@@ -397,7 +397,7 @@ These are just 5 more commands added to the classifier (13 total). At this count
 
 ## Summary: The Honest Take
 
-**With 3 MyoWare sensors, we can reliably build a 5–8 command silent speech interface that works at 75–88% accuracy.** This is enough for a compelling live demo of silent browsing, silent emergency communication, or silent AI interaction.
+**With 3 MyoWare sensors, we can reliably build a 5–8 command silent speech interface for MindOS that works at 75–88% accuracy.** This is enough for a compelling live demo of silent browsing, silent emergency communication, or silent AI interaction.
 
 What we **cannot** reliably do with 3 sensors:
 - Open-vocabulary free speech (need 6+ channels and vastly more data)
@@ -406,4 +406,4 @@ What we **cannot** reliably do with 3 sensors:
 
 **The play:** Nail the 5-command demo first. If it works great, extend to 8. If that works, add the emergency scenario. Don't overreach — a polished 5-command demo at 88% beats a shaky 15-command demo at 55%.
 
-**Time budget:** Hardware setup (10 min) + calibration (25 min) + training (2 min) = **model ready in 37 minutes**. This leaves plenty of hackathon time for the UI, demo polish, and practice runs.
+**Time budget:** Hardware setup (10 min) + calibration (25 min) + training (2 min) = **MindOS model ready in 37 minutes**. This leaves plenty of hackathon time for the UI, demo polish, and practice runs.

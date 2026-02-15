@@ -1,4 +1,4 @@
-"""Entry point for SilentPilot — supports GUI interactive mode and autonomous agent mode."""
+"""Entry point for MindOS — supports GUI interactive mode and autonomous agent mode."""
 
 import argparse
 import asyncio
@@ -321,13 +321,17 @@ def run_gui(url: str):
     task = loop.create_task(run_gui_loop(url, command_queue, overlay))
 
     def pump():
-        loop.run_until_complete(asyncio.sleep(0))
+        # Run multiple iterations to drain pending async work
+        try:
+            loop.run_until_complete(asyncio.sleep(0.01))
+        except Exception:
+            pass
         if task.done():
             root.quit()
         else:
-            root.after(5, pump)
+            root.after(10, pump)
 
-    root.after(5, pump)
+    root.after(10, pump)
     root.mainloop()
     if not task.done():
         task.cancel()
@@ -341,7 +345,7 @@ def run_gui(url: str):
 # ── CLI ────────────────────────────────────────────────────────────
 
 def main():
-    parser = argparse.ArgumentParser(description="SilentPilot Browser Automation")
+    parser = argparse.ArgumentParser(description="MindOS Browser Automation")
     parser.add_argument(
         "--mode",
         choices=["gui", "agent"],

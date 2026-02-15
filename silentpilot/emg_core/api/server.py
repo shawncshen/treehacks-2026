@@ -64,7 +64,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="SilentPilot EMG Core",
+    title="MindOS EMG Core",
     version="0.1.0",
     lifespan=lifespan,
 )

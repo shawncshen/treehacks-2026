@@ -347,7 +347,7 @@ def extract_features_td10_segment(segment: np.ndarray, sample_rate: float = 250.
     """Aggregate frame-level TD10 features into a single segment-level vector.
 
     Computes mean and std across frames for each TD10 dimension.
-    This adapts the EMG-UKA frame-level approach to SilentPilot's
+    This adapts the EMG-UKA frame-level approach to MindOS's
     segment-level classification.
 
     Returns:

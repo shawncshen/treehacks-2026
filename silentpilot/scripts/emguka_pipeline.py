@@ -2,7 +2,7 @@
 """EMG-UKA Trial Corpus pipeline: load real EMG data, extract word segments, classify.
 
 This connects the EMG-UKA dataset (real sEMG silent speech data) with our
-SilentPilot feature extraction and classification pipeline.
+MindOS feature extraction and classification pipeline.
 
 Key insights from iteration 1:
 - Must train per-speaker (AlterEgo paper also does this)

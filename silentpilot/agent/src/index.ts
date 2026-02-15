@@ -1,5 +1,5 @@
 /**
- * SilentPilot Agent entry point.
+ * MindOS Agent entry point.
  *
  * Connects to the EMG Core FastAPI WebSocket to receive predictions,
  * routes commands, and drives the orchestrator.

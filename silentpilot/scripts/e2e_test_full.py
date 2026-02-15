@@ -54,7 +54,7 @@ async def collect_varied_samples(reader: MockReader, command: str, n_samples: in
 
 async def main():
     print("=" * 60)
-    print("SilentPilot FULL Stress Test (All 8 Commands)")
+    print("MindOS FULL Stress Test (All 8 Commands)")
     print("=" * 60)
 
     user_id = "stress_test"

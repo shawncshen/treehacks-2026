@@ -1,7 +1,7 @@
 {
   "name": "silentpilot-agent",
   "version": "0.1.0",
-  "description": "Agent orchestrator for SilentPilot - bridges EMG commands to OpenAI + MCP",
+  "description": "Agent orchestrator for MindOS - bridges EMG commands to OpenAI + MCP",
   "type": "module",
   "scripts": {
     "dev": "tsx src/index.ts",

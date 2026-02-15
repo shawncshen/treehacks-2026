@@ -24,7 +24,7 @@ class Overlay:
         status = "\033[92m● Ready\033[0m" if self._ready else "\033[91m● Processing\033[0m"
         print(f"  {status}")
         print("=" * 60)
-        print(f"  SilentPilot — {tag}")
+        print(f"  MindOS — {tag}")
         print("=" * 60)
         for i, s in enumerate(suggestions):
             marker = ">>" if i == selected_index else "  "
