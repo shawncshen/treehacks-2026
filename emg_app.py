@@ -23,8 +23,12 @@ import time
 import webbrowser
 
 import numpy as np
-import serial
-import serial.tools.list_ports
+try:
+    import serial
+    import serial.tools.list_ports
+    HAS_SERIAL = True
+except ImportError:
+    HAS_SERIAL = False
 
 # Add project root to path
 PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -2389,6 +2393,8 @@ window.addEventListener('load', init);
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def detect_port():
+    if not HAS_SERIAL:
+        return None
     for p in serial.tools.list_ports.comports():
         if any(tag in p.device for tag in ("usbmodem", "usbserial", "ACM")):
             return p.device
