@@ -36,18 +36,29 @@ async def run_agent(goal: str, url: str, max_steps: int):
 # ── GUI interactive mode ───────────────────────────────────────────
 
 async def run_gui_loop(url: str, command_queue: queue.Queue, overlay):
-    """Main loop for GUI mode: engine runs in this async loop, commands come from queue."""
+    """Main loop: EMG thought-class buttons + free entry. No DOM action suggestions."""
     from actions.engine import ActionEngine
+    from actions.word_finder import find_words_for_sequence
+    from actions.word_disambiguate import pick_best_word
 
     if not OPENAI_API_KEY:
         print("ERROR: OPENAI_API_KEY not set. Check silentpilot/.env", flush=True)
         return
 
-    from actions.vision import AgentPlanner, Suggestion
+    from actions.vision import AgentPlanner
 
     engine = ActionEngine(overlay=overlay)
     planner = AgentPlanner(api_key=OPENAI_API_KEY)
     loop = asyncio.get_event_loop()
+
+    emg_sequence: list[str] = []
+    accumulated_prompt: list[str] = []
+    word_candidates: list[str] = []
+    word_candidate_index: int = 0
+
+    def _get_previously_added_words() -> list[str]:
+        return accumulated_prompt
+
     try:
         print("  Launching browser...", flush=True)
         try:
@@ -55,75 +66,89 @@ async def run_gui_loop(url: str, command_queue: queue.Queue, overlay):
             print("  Browser ready!", flush=True)
         except Exception as e:
             print(f"  Browser launch failed: {e}", flush=True)
-            print("  GUI running without browser. Enter a goal or quit.", flush=True)
             overlay.update_agent_status("No browser — enter a goal below")
-            # Wait for user commands even without browser
-            while True:
-                cmd = await loop.run_in_executor(None, command_queue.get)
-                if cmd == "quit":
-                    return
-                if cmd.startswith("goal:"):
-                    overlay.update_agent_status(f"Browser not available")
-                continue
+
+        overlay.set_status(True)
+        overlay.update_sequence([])
+
         while True:
-            try:
-                await engine.run_cycle()
-            except Exception as e:
-                print(f"\n  Error during analysis: {e}", flush=True)
-                traceback.print_exc()
-                cmd = await loop.run_in_executor(None, command_queue.get)
-                if cmd == "quit":
-                    return
+            cmd = await loop.run_in_executor(None, command_queue.get)
+            if not cmd:
                 continue
-            while True:
-                cmd = await loop.run_in_executor(None, command_queue.get)
-                if not cmd:
-                    continue
-                if cmd == "up":
-                    engine.move_selection("up")
-                elif cmd == "down":
-                    engine.move_selection("down")
-                elif cmd == "select":
-                    s = engine.get_selected()
-                    if s and s.action_type in ("type", "type_anywhere") and not s.action_detail.get("text"):
-                        overlay.prompt_type_text()
-                        continue
-                    landed_on_field = await engine.execute_selected()
-                    if landed_on_field:
-                        # Clicked a text field — auto-prompt for typing
-                        overlay.prompt_type_text()
-                        continue
-                    break
-                elif cmd.startswith("typed:"):
-                    text = cmd[6:]
-                    s = engine.get_selected()
-                    if s and s.action_type in ("type", "type_anywhere"):
-                        engine.set_type_text(text)
-                        await engine.execute_selected()
+            if cmd == "quit":
+                print("\n  Goodbye!", flush=True)
+                return
+
+            if cmd.startswith("emg:"):
+                cls = cmd[4:]
+                if cls == "REST":
+                    overlay.set_status(False)
+                    overlay.update_agent_status("Looking up…")
+
+                    candidates = find_words_for_sequence(emg_sequence)
+
+                    if not candidates:
+                        overlay.show_word_confirmation("(no matches)", False)
+                        overlay.update_agent_status("No matches")
+                        word_candidates = []
+                        emg_sequence = []
+                        overlay.update_sequence([])
+                        overlay.set_status(True)
                     else:
-                        # Came from clicking a text field — type directly into focused element
-                        await engine.browser.page_type(text)
-                        await engine.browser.press_key("Enter")
-                    break
-                elif cmd.startswith("pick:"):
-                    idx = int(cmd.split(":")[1])
-                    engine.select_index(idx)
-                    s = engine.get_selected()
-                    if s and s.action_type in ("type", "type_anywhere") and not s.action_detail.get("text"):
-                        overlay.prompt_type_text()
-                        continue
-                    landed_on_field = await engine.execute_selected()
-                    if landed_on_field:
-                        overlay.prompt_type_text()
-                        continue
-                    break
-                elif cmd.startswith("goal:"):
-                    goal = cmd[5:]
+                        page_context = ""
+                        try:
+                            page_title = await engine.browser.get_page_title()
+                            page_text = await engine.browser.get_page_text()
+                            page_context = f"Title: {page_title}\nText: {page_text[:1200]}"
+                        except Exception:
+                            pass
+
+                        prev_words = _get_previously_added_words()
+                        if len(candidates) == 1:
+                            suggested = candidates[0]
+                        else:
+                            suggested = await pick_best_word(candidates, page_context, prev_words)
+
+                        word_candidates = candidates
+                        word_candidate_index = candidates.index(suggested) if suggested in candidates else 0
+                        overlay.show_word_confirmation(suggested, len(candidates) > 1)
+                        overlay.set_status(True)
+                        overlay.update_agent_status("Yes / No / Retry")
+                else:
+                    emg_sequence.append(cls)
+                    overlay.update_sequence(emg_sequence)
+
+            elif cmd == "word_yes":
+                if word_candidates and 0 <= word_candidate_index < len(word_candidates):
+                    word = word_candidates[word_candidate_index]
+                    accumulated_prompt.append(word)
+                    overlay.update_prompt_display(accumulated_prompt)
+                emg_sequence = []
+                word_candidates = []
+                overlay.clear_content_area()
+                overlay.update_sequence([])
+                overlay.update_agent_status("Ready")
+
+            elif cmd == "word_no":
+                emg_sequence = []
+                word_candidates = []
+                overlay.clear_content_area()
+                overlay.update_sequence([])
+                overlay.update_agent_status("Ready")
+
+            elif cmd == "word_retry":
+                if len(word_candidates) > 1:
+                    word_candidate_index = (word_candidate_index + 1) % len(word_candidates)
+                    suggested = word_candidates[word_candidate_index]
+                    overlay.show_word_confirmation(suggested, True)
+
+            elif cmd == "goal:run":
+                goal = " ".join(accumulated_prompt)
+                if goal:
                     await _run_agent_in_gui(engine, planner, overlay, goal, command_queue)
-                    break
-                elif cmd == "quit":
-                    print("\n  Goodbye!", flush=True)
-                    return
+                overlay.set_status(True)
+                overlay.update_agent_status("Ready")
+
     except Exception as e:
         print(f"\n  Fatal error: {e}", flush=True)
         traceback.print_exc()
@@ -205,20 +230,11 @@ async def _run_agent_in_gui(engine, planner, overlay, goal, command_queue):
                 return
 
             if action.action_type == "confirm":
-                question = action.action_detail.get("question", "Should I proceed?")
-                overlay.update_agent_status(f"Agent asks: {question}")
-                overlay.show_agent_question(question)
-                loop = asyncio.get_event_loop()
-                while True:
-                    cmd = await loop.run_in_executor(None, command_queue.get)
-                    if cmd in ("quit", "stop_agent"):
-                        overlay.update_agent_status("Agent stopped by user")
-                        return
-                    if cmd.startswith("answer:"):
-                        answer = cmd[7:]
-                        planner._messages.append({"role": "user", "content": f"User response: {answer}"})
-                        overlay.update_agent_status(f"Agent: continuing...")
-                        break
+                # Auto-proceed: no confirmation, take the action
+                planner._messages.append({"role": "user", "content": "Yes, go ahead."})
+                # Fall through to execute the implied action - but confirm has no direct execution.
+                # The planner returned "confirm" instead of the actual action. We need to ask again
+                # for the real action. Simplest: treat confirm as "proceed" - re-prompt for next.
                 continue
 
             overlay.update_agent_status(f"Agent: {action.description[:50]}")
